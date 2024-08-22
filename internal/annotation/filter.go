@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // Options configures a filter.
@@ -54,9 +55,9 @@ func NewFalsyPredicate[T client.Object](key string, opts Options) (predicate.Typ
 
 // NewFalsyEventHandler returns an event handler that enqueues objects
 // that do not have annotation with key string key or whose value is falsy.
-func NewFalsyEventHandler[T client.Object](key string, opts Options) (handler.TypedEventHandler[T], error) {
+func NewFalsyEventHandler[T client.Object](key string, opts Options) (handler.TypedEventHandler[T, reconcile.Request], error) {
 	opts.truthy = false
-	return newEventHandler[T](key, opts)
+	return newEventHandler[T, reconcile.Request](key, opts)
 }
 
 // NewTruthyPredicate returns a predicate that passes objects
@@ -68,9 +69,9 @@ func NewTruthyPredicate[T client.Object](key string, opts Options) (predicate.Ty
 
 // NewTruthyEventHandler returns an event handler that enqueues objects
 // that do have annotation with key string key and whose value is truthy.
-func NewTruthyEventHandler[T client.Object](key string, opts Options) (handler.TypedEventHandler[T], error) {
+func NewTruthyEventHandler[T client.Object](key string, opts Options) (handler.TypedEventHandler[T, reconcile.Request], error) {
 	opts.truthy = true
-	return newEventHandler[T](key, opts)
+	return newEventHandler[T, reconcile.Request](key, opts)
 }
 
 func defaultOptions(opts *Options) {
@@ -80,30 +81,30 @@ func defaultOptions(opts *Options) {
 }
 
 // newEventHandler returns a filter for use as an event handler.
-func newEventHandler[T client.Object](key string, opts Options) (handler.TypedEventHandler[T], error) {
+func newEventHandler[T client.Object, request comparable](key string, opts Options) (handler.TypedEventHandler[T, reconcile.Request], error) {
 	f, err := newFilter[T](key, opts)
 	if err != nil {
 		return nil, err
 	}
 
 	f.hdlr = &handler.TypedEnqueueRequestForObject[T]{}
-	return handler.TypedFuncs[T]{
-		CreateFunc: func(ctx context.Context, evt event.TypedCreateEvent[T], q workqueue.RateLimitingInterface) {
+	return handler.TypedFuncs[T, reconcile.Request]{
+		CreateFunc: func(ctx context.Context, evt event.TypedCreateEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 			if f.Create(evt) {
 				f.hdlr.Create(ctx, evt, q)
 			}
 		},
-		UpdateFunc: func(ctx context.Context, evt event.TypedUpdateEvent[T], q workqueue.RateLimitingInterface) {
+		UpdateFunc: func(ctx context.Context, evt event.TypedUpdateEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 			if f.Update(evt) {
 				f.hdlr.Update(ctx, evt, q)
 			}
 		},
-		DeleteFunc: func(ctx context.Context, evt event.TypedDeleteEvent[T], q workqueue.RateLimitingInterface) {
+		DeleteFunc: func(ctx context.Context, evt event.TypedDeleteEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 			if f.Delete(evt) {
 				f.hdlr.Delete(ctx, evt, q)
 			}
 		},
-		GenericFunc: func(ctx context.Context, evt event.TypedGenericEvent[T], q workqueue.RateLimitingInterface) {
+		GenericFunc: func(ctx context.Context, evt event.TypedGenericEvent[T], q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 			if f.Generic(evt) {
 				f.hdlr.Generic(ctx, evt, q)
 			}
